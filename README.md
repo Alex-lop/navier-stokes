@@ -46,7 +46,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 
 - `index.html`: the page and its styles.
 - `guide.js`: the ten steps, the step bar, and the page's fluid of ticks.
-- `astral.js`: the ground behind every picture (a wind tunnel's dark, with lines of smoke drifting across it) and the first screen's whirlpool. `scenes.js` gets the ground from `guide.js`, so `astral.js` is imported in one place.
+- `astral.js`: the ground behind every picture (plain and dark, under the page's ticks) and the first screen's whirlpool. `scenes.js` gets the ground from `guide.js`, so `astral.js` is imported in one place.
 - `scenes.js`: the three.js scenes of the steps (three.js 0.187 from a pinned CDN URL).
 - `bake.py`: the solver. `python3 bake.py` solves for about 20 minutes and rewrites `can.bin`; it needs numpy and scipy.
 - `can.bin`: the baked solution, about 1 MB. Its layout is documented in `bake.py`.

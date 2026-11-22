@@ -126,10 +126,10 @@ const fluid = (() => {
 })();
 
 // ---- the ground, and the first screen's whirlpool --------------------------------------------------------------
-// astral.js draws the ground behind every screen (a wind tunnel's smoke) and, on the first one, a whirlpool on it. It starts after the words are on
+// astral.js draws the ground behind every screen (plain and dark) and, on the first one, a whirlpool on it. It starts after the words are on
 // screen, and where it cannot start (no WebGL, or the library did not load) the page keeps its plain ground and the ticks.
 let hero = null, heroing = null, astral = null;
-const openAstral = () => astral ??= import('./astral.js?v=2');
+const openAstral = () => astral ??= import('./astral.js?v=3');
 const openHero = () => heroing ??= openAstral().then(m => { hero = m.startHero($('sky'), { quiet: still, notes: $('notes') }); root.dataset.sky = 'on'; return hero; }).catch(e => (console.warn(e), null));
 
 // ---- the 3D view, loaded the first time a step needs it ---------------------------------------------------

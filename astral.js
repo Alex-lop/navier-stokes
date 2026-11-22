@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 
 // Two things: the ground every picture on the site sits on, and the first screen's picture.
-// The ground is a wind tunnel's: dark, with thin lines of smoke carried across it from left to right, straight where they
-// come in and wavier the further downstream. It is drawn in the ink's own grey, because smoke lines are the flow made
-// visible, and it keeps clear of the colours that mean something on the page.
+// The ground is plain: dark, with a soft light behind where the pictures stand, and nothing drawn on it. The page's ticks
+// are the only thing that moves over it.
 // The picture is a stretched whirlpool drawn as its streamlines: ribbons that spiral in along a plane and leave along the
 // axis. It is the Burgers vortex, the exact solution step 5 names, and every ribbon is a stretch of one of its streamlines,
 // worked out in the vertex shader from the solution's formula. Its colours are the page's: blue where the spin is, and
@@ -11,7 +10,7 @@ import * as THREE from 'three';
 
 const TAU = 2 * Math.PI, f = x => x.toFixed(4);
 
-// ---- the smoke ---------------------------------------------------------------------------------------------
+// ---- the ground --------------------------------------------------------------------------------------------
 // One triangle over the whole view, coloured by where it is on screen and not by the camera, so the first screen's canvas
 // and the 3D steps' canvas show the same ground. They share one clock too: DRIFT, in seconds.
 const DRIFT = { value: 0 };
@@ -23,20 +22,10 @@ export function backdrop() {
     fragmentShader: `
       uniform float uTime; uniform vec2 uRes;
       float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
-      float noise(vec2 x) {
-        vec2 i = floor(x), u = fract(x); u = u * u * (3.0 - 2.0 * u);
-        return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
-      }
       void main() {
         vec2 uv = gl_FragCoord.xy / uRes, p = (uv - 0.5) * vec2(uRes.x / uRes.y, 1.0);
         // The ground: a soft light on the wall behind where the pictures stand, falling off into the dark.
         vec3 col = mix(vec3(0.074, 0.082, 0.100), vec3(0.026, 0.029, 0.037), smoothstep(0.0, 1.05, length(p - vec2(0.3, 0.08))));
-        // The smoke. Everything is carried downstream at one speed; the lines waver more the further they have come.
-        float x = p.x - uTime * 0.035, far = smoothstep(-0.9, 0.9, p.x);
-        float y = p.y + (0.015 + 0.085 * far) * (noise(vec2(x * 1.4, p.y * 1.6)) - 0.5) * 2.0 + 0.022 * far * far * (noise(vec2(x * 5.0, p.y * 5.0 + 3.0)) - 0.5);
-        float k = y * 13.0, id = floor(k), off = fract(k) - 0.5;
-        float lit = smoothstep(0.3, 0.8, noise(vec2(x * 0.8 + id * 7.3, id * 1.7))) * (0.45 + 0.55 * hash(vec2(id, 3.0)));   // each line comes and goes along its length
-        col += vec3(0.80, 0.83, 0.88) * lit * (0.15 * exp(-off * off * 2600.0) + 0.04 * exp(-off * off * 60.0));   // a thread, and the haze round it
         col += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) / 255.0;   // a grain, so the dark gradient does not band
         gl_FragColor = vec4(col, 1.0);
       }`,
