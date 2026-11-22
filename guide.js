@@ -541,10 +541,10 @@ function show() {
   $('s-title').textContent = step.title; $('s-idea').textContent = step.idea;
   $('s-do').textContent = step.act; $('s-try').hidden = !step.act;
   $('s-legend').innerHTML = step.legend || ''; $('s-more').innerHTML = step.more || '';
-  // Next and Back say where they lead, and the last step leads on to the companion site.
+  // Next and Back say where they lead. The last step has nowhere further to go, so its Next leads home.
   $('s-back').href = '#' + (STEPS[i - 1]?.id || ''); $('s-back').textContent = `‹ ${STEPS[i - 1]?.tab || 'Start'}`;
-  $('s-next').href = STEPS[i + 1] ? '#' + STEPS[i + 1].id : ZETA; $('s-next').textContent = STEPS[i + 1] ? `Next: ${STEPS[i + 1].tab} ›` : 'Zeta World ›';
-  $('s-home').hidden = !!STEPS[i + 1];                        // the last card also offers the way home, to this guide's first screen
+  $('s-next').href = '#' + (STEPS[i + 1]?.id || ''); $('s-next').textContent = STEPS[i + 1] ? `Next: ${STEPS[i + 1].tab} ›` : 'Home ›';
+  $('s-also').hidden = !!STEPS[i + 1];                        // the last card's main button goes home, where the companion site is offered as a question; a quieter one beside it goes there directly
 
   // The point of the step appears once the visitor has done the thing, or asks for it.
   const ui = { big: $('s-big'), done() { if (payoff.classList.contains('on')) return; payoff.classList.add('on'); payoff.textContent = $('s-live').textContent = step.payoff; } };
