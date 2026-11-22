@@ -55,9 +55,13 @@
   .btn-go { background: var(--act); color: var(--bg); border-color: var(--act); }
   .btn-go:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 
-  /* Two canvases behind everything: the page's own fluid of ticks, and over it the 3D view. */
-  #field, #world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  /* Three canvases behind everything: the first screen's night sky, the page's own fluid of ticks, and over them the 3D view.
+     The sky shows on the intro only, once it is running; without it (no WebGL) the intro has the ticks, as the steps do. */
+  #sky, #field, #world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #sky { z-index: 0; opacity: 0; pointer-events: none; transition: opacity 1.6s; }
+  html[data-mode=intro][data-sky=on] #sky { opacity: 1; }
   #field { z-index: 0; transition: opacity .6s; }
+  html[data-mode=intro][data-sky=on] #field { opacity: 0; }
   #world { z-index: 1; opacity: 0; visibility: hidden; transition: opacity .9s, visibility 0s .9s; touch-action: none; }
   html[data-mode=world] #world { opacity: 1; visibility: visible; transition: opacity .9s; }
   html[data-mode=world] #field { opacity: 0; }
@@ -94,7 +98,10 @@
   .nav ul { display: flex; gap: 22px; margin: 0; padding: 0; list-style: none; font-size: .86rem; }
   .nav a { display: inline-flex; align-items: center; min-height: 44px; }
   .hero { position: relative; flex: 1; display: flex; align-items: center; }
-  .hero-copy { width: min(100%, 43rem); padding-block: clamp(40px, 8vh, 96px); }
+  /* Under the sky's picture the words keep a darker ground: to their left on a wide screen, beneath them on a narrow one. */
+  html[data-sky=on] .hero::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgb(13 17 23 / .8), rgb(13 17 23 / .55) 36%, transparent 60%); }
+  @media (max-width: 899px) { html[data-sky=on] .hero::before { background: linear-gradient(0deg, rgb(13 17 23 / .9) 58%, rgb(13 17 23 / .6) 84%, transparent); } }
+  .hero-copy { position: relative; width: min(100%, 43rem); padding-block: clamp(40px, 8vh, 96px); }
   .hero-copy > :not(h1) { max-width: 34rem; }
   .hero h1 { margin: 0 0 22px; font-size: clamp(2.3rem, 4.4vw, 3.5rem); }
   .lede { margin: 0; max-width: 46ch; font-size: 1.05rem; }
@@ -106,6 +113,8 @@
   .rows a { display: inline-flex; align-items: center; min-height: 44px; margin-right: 14px; }
   .stir { position: absolute; right: max(var(--pad), calc(50% - 560px)); top: 46%; width: 15rem; margin: 0; font: 400 .72rem/1.6 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: right; }
   .stir::before { content: "→ "; color: var(--act); }
+  .stir.cap { top: auto; bottom: 3.4rem; } .stir.cap::before { content: none; }   /* what the sky's picture is, in its corner */
+  html[data-sky=on] .stir:not(.cap), html:not([data-sky=on]) .stir.cap { display: none; }
   @media (max-width: 900px) { .stir { display: none; } }
 
   /* The step card, laid out as on Zeta World. On a 2D step it is two columns that hang from the top: the words, then the
@@ -215,10 +224,11 @@
     #step h1 { font-size: 1.25rem; } .btn { min-height: 36px; padding: 6px 14px; } #step p { margin-top: .4rem; }
     .hero-copy { padding-block: 16px; } .hero h1 { font-size: 2rem; margin-bottom: 10px; } .actions, .rows { margin-top: 12px; } .rows > div { min-height: 36px; }
   }
-  @media (prefers-reduced-motion: reduce) { #world, #field, #s-payoff { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { #sky, #world, #field, #s-payoff { transition: none; } }
 </style>
 </head>
 <body>
+<canvas id="sky" aria-hidden="true"></canvas>
 <canvas id="field" aria-hidden="true"></canvas>
 <canvas id="world" role="img" aria-label="3D view of a fluid. Depending on the step: a whirlpool whose spin is drawn in blue, a can of swirling fluid cut open to show where its spin is growing without limit, or a sketch of the blow-up announced in November 2026."></canvas>
 <p class="hud" id="hud"></p>
@@ -237,6 +247,7 @@
   </nav>
   <header class="hero">
     <p class="stir" aria-hidden="true">move out here: this page is a fluid</p>
+    <p class="stir cap" aria-hidden="true">a whirlpool, pulled thinner and faster until it breaks</p>
     <div class="wrap">
       <div class="hero-copy">
         <p class="eyebrow">Navier–Stokes · the singularity, as something you can watch</p>
@@ -276,6 +287,6 @@
 
 <button type="button" class="motion-dock" id="motion">Pause motion</button>
 
-<script type="module" src="./guide.js?v=1"></script>
+<script type="module" src="./guide.js?v=2"></script>
 </body>
 </html>

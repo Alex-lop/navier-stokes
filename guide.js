@@ -23,6 +23,7 @@ const fluid = (() => {
   const LEN = 9, GROW = 6, A0 = 0.1, A1 = 0.75, V0 = 90, REST = 6;   // tick length and what a flow adds to it, opacity at rest and in a flow, the speed (px/s) a tick fully follows, and the speed below which it rests
   const MAX = 70, S0 = 22 * 22, HALF = 16, DRAG = 10;          // vortices kept, a new core's radius^2, half the gap of a shed pair, seconds for a swirl to fade
   const api = { nu: 30, onstir: null, kick };                  // nu in px^2/s: 30 reads as water, 8000 as honey
+  const unseen = () => root.dataset.mode === 'world' || (root.dataset.mode === 'intro' && root.dataset.sky === 'on');   // the 3D view or the intro's sky is over the ticks
   let W = 0, H = 0, ticks = [], vort = [], raf = 0, last = 0, lx = 0, ly = 0, lt = 0, vx = 0, vy = 0;
   const buckets = Array.from({ length: 8 }, () => []);
   const modPi = a => a - Math.PI * Math.round(a / Math.PI), smooth = q => q * q * (3 - 2 * q);
@@ -75,7 +76,7 @@ const fluid = (() => {
       for (let j = 0; j < b.length; j += 4) { ctx.moveTo(b[j], b[j + 1]); ctx.lineTo(b[j + 2], b[j + 3]); }
       ctx.stroke();
     });
-    if ((vort.length || moving) && root.dataset.mode !== 'world' && !document.hidden) raf = requestAnimationFrame(frame);
+    if ((vort.length || moving) && !unseen() && !document.hidden) raf = requestAnimationFrame(frame);
   }
   function kick() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); } }
   // A pair of opposite vortices either side of the point, set so the fluid between them moves along (dx, dy) at about `speed`.
@@ -86,7 +87,7 @@ const fluid = (() => {
     kick();
   }
   addEventListener('pointermove', e => {
-    if (root.dataset.mode === 'world' || still()) return;
+    if (unseen() || still()) return;
     const now = performance.now(), dx = e.clientX - lx, dy = e.clientY - ly, d = Math.hypot(dx, dy), gap = now - lt;
     if (gap > 150 || d > 240) { lx = e.clientX; ly = e.clientY; lt = now; return; }   // a new stroke: no jump from wherever the pointer last was
     if (d < 14) return;
@@ -105,6 +106,12 @@ const fluid = (() => {
   kick();
   return api;
 })();
+
+// ---- the first screen's sky ---------------------------------------------------------------------------------
+// A whirlpool of light in a night sky (astral.js). It starts after the words are on screen, and where it cannot start
+// (no WebGL, or the library did not load) the intro keeps the ticks instead.
+let hero = null, heroing = null;
+const openHero = () => heroing ??= import('./astral.js?v=1').then(m => { hero = m.startHero($('sky'), { quiet: still }); root.dataset.sky = 'on'; return hero; }).catch(e => (console.warn(e), null));
 
 // ---- the 3D view, loaded the first time a step needs it ---------------------------------------------------
 let view = null, opening = null, turn = 0;
@@ -406,6 +413,7 @@ function show() {
   document.title = step ? `${step.title} · Navier–Stokes` : TITLE;
   for (const tab of $('tabs').children) if (step && tab.hash === location.hash) { tab.setAttribute('aria-current', 'step'); tab.scrollIntoView({ block: 'nearest', inline: 'center' }); } else tab.removeAttribute('aria-current');
   view?.run(mode === 'world');                                // no drawing while the 3D view is off screen
+  if (mode === 'intro') openHero().then(h => h?.run(root.dataset.mode === 'intro')); else hero?.run(false);
   if (mode !== 'world') fluid.kick();
   $('hud').innerHTML = '';
   if (!step) return;
@@ -446,6 +454,6 @@ addEventListener('keydown', e => {
 // Pause motion: the same rest state as the system's reduced-motion setting.
 {
   const b = $('motion'), label = () => { b.textContent = still() ? 'Resume motion' : 'Pause motion'; b.disabled = reduce.matches; };
-  b.onclick = () => { if (root.dataset.motion === 'off') delete root.dataset.motion; else root.dataset.motion = 'off'; label(); fluid.kick(); };
-  reduce.addEventListener('change', label); label();
+  b.onclick = () => { if (root.dataset.motion === 'off') delete root.dataset.motion; else root.dataset.motion = 'off'; label(); fluid.kick(); hero?.kick(); };
+  reduce.addEventListener('change', () => { label(); hero?.kick(); }); label();
 }

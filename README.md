@@ -42,7 +42,8 @@ python3 -m http.server 8000   # then open http://localhost:8000
 
 - `index.html`: the page and its styles.
 - `guide.js`: the ten steps, the step bar, and the page's fluid of ticks.
-- `scenes.js`: the three.js scenes (three.js 0.187 from a pinned CDN URL).
+- `astral.js`: the first screen's picture, a whirlpool of light in a night sky. The sky is adapted from Zeta World's.
+- `scenes.js`: the three.js scenes of the steps (three.js 0.187 from a pinned CDN URL).
 - `bake.py`: the solver. `python3 bake.py` solves for about 20 minutes and rewrites `can.bin`; it needs numpy and scipy.
 - `can.bin`: the baked solution, about 1 MB. Its layout is documented in `bake.py`.
 
