@@ -1,6 +1,6 @@
 # Navier–Stokes: stretch a whirlpool, watch it blow up
 
-A ten-step guide, in the browser, from what a fluid is to the Navier–Stokes blow-up announced in November 2026. It is the companion of [Zeta World](https://alex-lop.github.io/zeta-world/), which does the same for the Riemann hypothesis, and it uses that site's look and step-by-step shell.
+A ten-step guide, in the browser, from what a fluid is to the Navier–Stokes blow-up announced in November 2026. It is the companion of [Zeta World](https://alex-lop.github.io/zeta-world/), which does the same for the Riemann hypothesis, and it uses that site's step-by-step shell.
 
 **Live: https://alex-lop.github.io/navier-stokes/**
 
@@ -11,6 +11,10 @@ As of 22 Nov 2026: proofs that solutions of the Navier–Stokes equations can bl
 This project shows what the claims say. It proves nothing.
 
 ## The ten steps
+
+The first screen is a stretched whirlpool drawn as its streamlines: ribbons that spiral in along a plane and leave along the axis. It is the Burgers vortex of step 5, an exact solution of the equations, and each ribbon is worked out live from the solution's formula.
+
+Every step has the same card: the idea, one thing to try with its controls right under it, then the point, which appears once you have tried it. The steps come in four parts: the fluid (1 and 2), the whirlpool (3 to 6), the blow-up (7 to 9) and the record (10).
 
 | Steps | What you do | What is on screen |
 |---|---|---|
@@ -42,7 +46,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 
 - `index.html`: the page and its styles.
 - `guide.js`: the ten steps, the step bar, and the page's fluid of ticks.
-- `astral.js`: the first screen's picture, a whirlpool of light in a night sky. The sky is adapted from Zeta World's.
+- `astral.js`: the ground behind every picture (a wind tunnel's dark, with lines of smoke drifting across it) and the first screen's whirlpool. `scenes.js` gets the ground from `guide.js`, so `astral.js` is imported in one place.
 - `scenes.js`: the three.js scenes of the steps (three.js 0.187 from a pinned CDN URL).
 - `bake.py`: the solver. `python3 bake.py` solves for about 20 minutes and rewrites `can.bin`; it needs numpy and scipy.
 - `can.bin`: the baked solution, about 1 MB. Its layout is documented in `bake.py`.

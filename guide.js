@@ -22,9 +22,9 @@ const fluid = (() => {
   const canvas = $('field'), ctx = canvas.getContext('2d');
   const LEN = 9, GROW = 6, A0 = 0.1, A1 = 0.75, V0 = 90, REST = 6;   // tick length and what a flow adds to it, opacity at rest and in a flow, the speed (px/s) a tick fully follows, and the speed below which it rests
   const MAX = 70, S0 = 22 * 22, HALF = 16, DRAG = 10;          // vortices kept, a new core's radius^2, half the gap of a shed pair, seconds for a swirl to fade
-  const api = { nu: 30, onstir: null, kick };                  // nu in px^2/s: 30 reads as water, 8000 as honey
+  const api = { nu: 30, onstir: null, kick, demo };            // nu in px^2/s: 30 reads as water, 8000 as honey
   const unseen = () => root.dataset.mode === 'world' || (root.dataset.mode === 'intro' && root.dataset.sky === 'on');   // the 3D view or the intro's sky is over the ticks
-  let W = 0, H = 0, ticks = [], vort = [], raf = 0, last = 0, lx = 0, ly = 0, lt = 0, vx = 0, vy = 0;
+  let W = 0, H = 0, ticks = [], vort = [], raf = 0, last = 0, lx = 0, ly = 0, lt = 0, vx = 0, vy = 0, ghost = null;
   const buckets = Array.from({ length: 8 }, () => []);
   const modPi = a => a - Math.PI * Math.round(a / Math.PI), smooth = q => q * q * (3 - 2 * q);
   canvas.style.touchAction = 'pan-y';                          // a vertical swipe still scrolls; a sideways one stirs
@@ -76,7 +76,8 @@ const fluid = (() => {
       for (let j = 0; j < b.length; j += 4) { ctx.moveTo(b[j], b[j + 1]); ctx.lineTo(b[j + 2], b[j + 3]); }
       ctx.stroke();
     });
-    if ((vort.length || moving) && !unseen() && !document.hidden) raf = requestAnimationFrame(frame);
+    if (ghost) { ctx.globalAlpha = 0.9; ctx.strokeStyle = css('--act'); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(ghost[0], ghost[1], 11, 0, 2 * Math.PI); ctx.stroke(); }
+    if ((vort.length || moving || ghost) && !unseen() && !document.hidden) raf = requestAnimationFrame(frame);
   }
   function kick() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); } }
   // A pair of opposite vortices either side of the point, set so the fluid between them moves along (dx, dy) at about `speed`.
@@ -86,11 +87,28 @@ const fluid = (() => {
     if (vort.length > MAX) vort.splice(0, vort.length - MAX);
     kick();
   }
+  // What stirring is, shown: the page makes one stroke by itself, a ring in the visitor's colour sweeping an arc through the
+  // part of the page to the right of `left`. Any stroke of the visitor's own ends it.
+  function demo(left) {
+    const from = performance.now();
+    let sx, sy;
+    const go = now => {
+      const u = (now - from) / 1300;
+      if (u >= 1 || !ghost || still() || unseen()) { ghost = null; return; }
+      const e = smooth(u), x = left + (W - left) * (0.2 + 0.6 * e), y = H * (0.62 - 0.26 * Math.sin(Math.PI * e));
+      if (Math.hypot(x - sx, y - sy) >= 20) { shed(x, y, x - sx, y - sy, 800); sx = x; sy = y; }
+      sx ??= x; sy ??= y;
+      ghost = [x, y];
+      requestAnimationFrame(go);
+    };
+    ghost = []; kick(); requestAnimationFrame(go);
+  }
   addEventListener('pointermove', e => {
     if (unseen() || still()) return;
     const now = performance.now(), dx = e.clientX - lx, dy = e.clientY - ly, d = Math.hypot(dx, dy), gap = now - lt;
     if (gap > 150 || d > 240) { lx = e.clientX; ly = e.clientY; lt = now; return; }   // a new stroke: no jump from wherever the pointer last was
     if (d < 14) return;
+    ghost = null;
     shed(e.clientX, e.clientY, dx, dy, Math.min(d / Math.max(gap, 4) * 1000, 1500));
     lx = e.clientX; ly = e.clientY; lt = now;
     api.onstir?.();
@@ -107,16 +125,17 @@ const fluid = (() => {
   return api;
 })();
 
-// ---- the first screen's sky ---------------------------------------------------------------------------------
-// A whirlpool of light in a night sky (astral.js). It starts after the words are on screen, and where it cannot start
-// (no WebGL, or the library did not load) the intro keeps the ticks instead.
-let hero = null, heroing = null;
-const openHero = () => heroing ??= import('./astral.js?v=1').then(m => { hero = m.startHero($('sky'), { quiet: still }); root.dataset.sky = 'on'; return hero; }).catch(e => (console.warn(e), null));
+// ---- the ground, and the first screen's whirlpool --------------------------------------------------------------
+// astral.js draws the ground behind every screen (a wind tunnel's smoke) and, on the first one, a whirlpool on it. It starts after the words are on
+// screen, and where it cannot start (no WebGL, or the library did not load) the page keeps its plain ground and the ticks.
+let hero = null, heroing = null, astral = null;
+const openAstral = () => astral ??= import('./astral.js?v=2');
+const openHero = () => heroing ??= openAstral().then(m => { hero = m.startHero($('sky'), { quiet: still, notes: $('notes') }); root.dataset.sky = 'on'; return hero; }).catch(e => (console.warn(e), null));
 
 // ---- the 3D view, loaded the first time a step needs it ---------------------------------------------------
 let view = null, opening = null, turn = 0;
 const NO_WEBGL = 'This browser could not start WebGL, so the 3D view is off. The words still tell the story.';
-const open3D = () => opening ??= import('./scenes.js?v=1').then(m => view = m.start($('world'), { quiet: still, panel: $('panel') })).catch(e => (console.error(e), null));
+const open3D = () => opening ??= Promise.all([import('./scenes.js?v=2'), openAstral()]).then(([m, a]) => view = m.start($('world'), { quiet: still, panel: $('panel'), backdrop: a.backdrop })).catch(e => (console.error(e), null));
 // Runs fn(view) once the 3D view is up, unless the visitor has moved on to another step by then.
 function with3D(fn) {
   const mine = turn;
@@ -142,6 +161,7 @@ function pen(canvas, h) {
   return [c, w, h];
 }
 const css = name => getComputedStyle(root).getPropertyValue(name).trim();
+const short = () => innerWidth < 900 || innerHeight < 800;   // little room for a chart: beside the 3D view on a phone, or in a short window
 
 // ---- step 6's toy -------------------------------------------------------------------------------------------
 // A whirlpool with a Gaussian core in a pull of strength a has width^2 changing at the rate 4 nu - a width^2 (step 5 is
@@ -157,7 +177,7 @@ function runaway(stage, ui) {
   let t = 0, raf = 0, x = 0;
   const w = tt => Math.max(1 - (1 - x) * tt, 0);
   function draw() {
-    const [c, W, H] = pen(plot, innerWidth < 900 ? 84 : 112), px = tt => 8 + tt / T_MAX * (W - 16), py = s => H - 16 - Math.min(s, S_MAX) / S_MAX * (H - 28);
+    const [c, W, H] = pen(plot, short() ? 84 : 112), px = tt => 8 + tt / T_MAX * (W - 16), py = s => H - 16 - Math.min(s, S_MAX) / S_MAX * (H - 28);
     c.strokeStyle = css('--hair-strong'); c.beginPath(); c.moveTo(8, H - 16); c.lineTo(W - 8, H - 16); c.stroke();
     c.fillStyle = css('--muted'); c.fillText('time →', W - 52, H - 3); c.fillText('spin', 10, 12);
     const T = x < 1 ? 1 / (1 - x) : Infinity;
@@ -206,13 +226,13 @@ function can(scope) {
     let data = null, raf = 0;
     const X = t => -Math.log10(1 - t / T_BLOW), Y = w => Math.log10(w / W0);
     function draw(t, w) {
-      const [c, W, H] = pen(plot, innerWidth < 900 ? 92 : 124), px = x => 82 + x / 4 * (W - 112), py = y => H - 24 - y / 9 * (H - 36);
+      const [c, W, H] = pen(plot, short() ? 92 : 124), px = x => 82 + x / 4 * (W - 112), py = y => H - 24 - y / 9 * (H - 36);
       c.strokeStyle = css('--hair'); c.fillStyle = css('--muted');
       c.textAlign = 'center';
       ['100%', '10%', '1%', '0.1%', '0.01%'].forEach((s, x) => { c.beginPath(); c.moveTo(px(x), 12); c.lineTo(px(x), H - 24); c.stroke(); c.fillText(s, px(x), H - 9); });
       c.textAlign = 'right';
       [['×1', 0], ['×1,000', 3], ['×1 million', 6], ['×1 billion', 9]].forEach(([s, y]) => { c.beginPath(); c.moveTo(82, py(y)); c.lineTo(W - 30, py(y)); c.stroke(); c.fillText(s, 76, py(y) + 4); });
-      c.fillText('time left before the blow-up', W - 34, H - 30);
+      c.fillText('time left', W - 34, H - 30);
       c.textAlign = 'left'; c.fillText('largest spin', 88, 24);
       c.strokeStyle = css('--blue'); c.lineWidth = 2; c.beginPath();
       for (let i = 0; i < data.hist.length; i += 2) c[i ? 'lineTo' : 'moveTo'](px(X(data.hist[i])), py(Y(data.hist[i + 1])));
@@ -277,23 +297,28 @@ function announced(stage, ui) {
 // (the one instruction) and payoff are the step's words. more is a closed <details>. world says the step needs the 3D view.
 // mount(stage, ui) builds the step's controls and may return a function that undoes it.
 const INK = '<span class="inked"><i class="sw"></i>the flow</span>', BLUE = '<span class="blue"><i class="sw"></i>spin</span>';
-const STATUS = `Status, 22 Nov 2026: proofs that solutions of the Navier–Stokes equations can blow up were announced on 8 Sep (with a driving force, <a href="https://openai.com/index/navier-stokes-solution/">by OpenAI</a>) and on 20 Nov (with no force, <a href="https://github.com/tristanbuckmaster/navier-stokes">by Alpöge and Buckmaster</a>). Neither has been peer reviewed, and the second paper’s key data has not been released. The Clay Mathematics Institute <a href="https://www.claymath.org/millennium/navier-stokes-equation/">lists the problem as “Active”</a>. This page shows what the claims say. It proves nothing.`;
 const STEPS = [
   { id: 'flow', tab: 'Flow', title: 'A fluid is a field of arrows',
     idea: 'At every point a fluid has a speed and a direction. Each tick on this page is one of those arrows.',
-    act: 'Sweep across the page to stir it.',
+    act: 'Sweep across the page.',
     payoff: 'It kept moving after you stopped. The Navier–Stokes equations are the rule for what a flow does next.',
-    mount(stage, ui) { fluid.onstir = ui.done; return () => fluid.onstir = null; } },
+    mount(stage, ui) {
+      if (still()) ui.done();                                  // nothing can be stirred while motion is paused
+      const show = setTimeout(() => fluid.demo(innerWidth >= 900 ? $('panel').offsetWidth : 0), 1000);
+      fluid.onstir = () => { clearTimeout(show); ui.done(); };
+      return () => { clearTimeout(show); fluid.onstir = null; };
+    } },
   { id: 'law', tab: 'The rule', title: 'One rule, three pushes',
-    idea: 'The flow carries itself along, pressure stops it piling up, and viscosity, its stickiness, smooths it out.',
+    idea: 'The equation, term by term. Viscosity is the fluid’s stickiness.',
     act: 'Slide to honey, then stir again.',
     payoff: 'In honey a swirl dies at once. Viscosity is the brake. The million-dollar question: does the brake always hold?',
     mount(stage, ui) {
-      const [row, input, out] = slide('stickiness', 0, 1, 0.01, 0, 'gold'), box = el('<div class="backed"></div>');
-      box.append(el(`<p class="law" role="img" aria-label="The Navier–Stokes equation: the rate of change of the velocity u equals minus u dot grad u, minus the gradient of the pressure p, plus the viscosity nu times the Laplacian of u.">
+      const [row, input, out] = slide('stickiness', 0, 1, 0.01, 0, 'gold');
+      ui.big.append(el(`<p class="law" role="img" aria-label="The Navier–Stokes equation: the rate of change of the velocity u equals minus u dot grad u, minus the gradient of the pressure p, plus the viscosity nu times the Laplacian of u.">
         <span>∂u/∂t =<small>how the flow changes</small></span><span>− (u·∇)u<small>it carries itself along</small></span>
-        <span>− ∇p<small>pressure stops it piling up</small></span><span class="gold">+ ν ∆u<small>viscosity smooths it</small></span></p>`), row);
-      stage.append(box);
+        <span>− ∇p<small>pressure stops it piling up</small></span><span class="gold">+ ν ∆u<small>viscosity smooths it</small></span></p>`));
+      stage.append(row);
+      if (still()) ui.done();
       const set = () => { const x = +input.value; fluid.nu = 30 * (8000 / 30) ** x; out.textContent = x < 0.2 ? 'water' : x < 0.5 ? 'oil' : x < 0.8 ? 'syrup' : 'honey'; };
       input.oninput = set; set();
       fluid.onstir = () => { if (+input.value > 0.5) ui.done(); };
@@ -359,9 +384,9 @@ const STEPS = [
   { id: 'runaway', tab: 'Runaway', world: true, title: 'What if the spin did the pulling?',
     idea: 'Suppose the pull grew with the spin: more spin, harder pull, more spin.',
     act: 'Press Run. Then add stickiness and run again.',
-    payoff: 'Infinite spin at a finite time: a blow-up. Enough stickiness prevents it, but thinness alone never does: squeezing and spreading both grow as 1/width².',
+    payoff: 'Infinite spin at a finite time: a blow-up. Enough stickiness prevents it, but thinness alone never does.',
     legend: `${BLUE}<span class="red"><i class="sw"></i>the blow-up</span>`,
-    more: '<details><summary>What the toy is</summary><p>The last step’s whirlpool, with its pull set by hand to a fixed multiple of its own peak spin. Its width² then changes at a constant rate, so it reaches zero at a finite time unless the viscosity is above a threshold. Nothing here shows that a real flow can pull on itself this way. That is the next step.</p></details>',
+    more: '<details><summary>What the toy is</summary><p>The last step’s whirlpool, with its pull set by hand to a fixed multiple of its own peak spin. Its width² then changes at a constant rate, so it reaches zero at a finite time unless the viscosity is above a threshold. Thinness alone never stops it: squeezing and spreading both grow as 1/width². Nothing here shows that a real flow can pull on itself this way. That is the next step.</p></details>',
     mount: runaway },
   { id: 'can', tab: 'The can', world: true, title: 'A flow that pulls on itself',
     idea: 'A can of fluid with no stickiness. Each layer swirls the opposite way to its neighbours.',
@@ -387,7 +412,7 @@ const STEPS = [
   { id: 'status', tab: 'The record', title: 'What is settled, and what is not',
     idea: 'As of 22 Nov 2026. Open a line to see what it rests on.',
     act: '', payoff: '',
-    mount(stage) {
+    mount(stage, ui) {
       const row = (title, tag, cls, body) => `<details><summary><b>${title}</b><span class="${cls}">${tag}</span></summary><p>${body}</p></details>`;
       const box = el('<div class="backed"></div>');
       box.append(el(`<div class="checks">
@@ -397,49 +422,58 @@ const STEPS = [
         ${row('With viscosity and a driving force: blow-up', 'announced 8 Sep 2026', 'red', 'A <a href="https://openai.com/index/navier-stokes-solution/">166-page paper by OpenAI</a> constructs, for every viscosity, a flow that starts at rest, is pushed by a smooth force, and reaches unbounded speed in finite time while its energy stays bounded. The problem’s “breakdown” statements allow such a force. Not peer reviewed.')}
         ${row('With viscosity and no force: blow-up', 'announced 20 Nov 2026', 'red', 'A <a href="https://github.com/tristanbuckmaster/navier-stokes">79-page paper by Alpöge and Buckmaster</a> claims smooth starting flows that blow up with nothing pushing them. Its repository says the data the proof rests on, a “certificate”, is not yet released, and that the computation checking it is not part of the accompanying Lean formalization. Not peer reviewed.')}
         ${row('The prize', 'Clay: “active”', '', 'On 11 Sep 2026 the Clay Mathematics Institute <a href="https://www.claymath.org/news/navier-stokes-announcement/">wrote</a> of “the announcement that the Navier-Stokes problem has apparently been settled” and called its own process “deliberately unhurried”. Its <a href="https://www.claymath.org/millennium-problems/rules/">rules</a> ask for publication, two years, and general acceptance.')}
-      </div>`), el(`<p class="status">${STATUS}</p>`));
-      stage.append(box);
+      </div>`), el('<p class="status">Neither announcement has been peer reviewed. This page shows what the claims say. It proves nothing.</p>'));
+      ui.big.append(box);
     } },
 ];
 
 // ---- the shell: one step on screen, named by the URL hash ----------------------------------------------------
-let leave = null, timer = 0;
+// The climb has four parts. The step bar marks where each begins, and every step says which it belongs to.
+const PARTS = [['The fluid', 2], ['The whirlpool', 4], ['The blow-up', 3], ['The record', 1]];
+const part = PARTS.flatMap(([name, n]) => Array(n).fill(name));
+let leave = null;
 const TITLE = document.title;
 function show() {
   const id = location.hash.slice(1), i = STEPS.findIndex(s => s.id === id), step = STEPS[i];
-  leave?.(); leave = null; clearTimeout(timer); turn++;
+  leave?.(); leave = null; turn++;
   const mode = step ? (step.world ? 'world' : 'paper') : 'intro';
   root.dataset.mode = mode; root.dataset.step = step ? id : '';
   document.title = step ? `${step.title} · Navier–Stokes` : TITLE;
-  for (const tab of $('tabs').children) if (step && tab.hash === location.hash) { tab.setAttribute('aria-current', 'step'); tab.scrollIntoView({ block: 'nearest', inline: 'center' }); } else tab.removeAttribute('aria-current');
+  for (const tab of $('tabs').children) {
+    tab.classList.toggle('past', tab.dataset.k < i);
+    if (step && tab.hash === location.hash) { tab.setAttribute('aria-current', 'step'); tab.scrollIntoView({ block: 'nearest', inline: 'center' }); } else tab.removeAttribute('aria-current');
+  }
   view?.run(mode === 'world');                                // no drawing while the 3D view is off screen
-  if (mode === 'intro') openHero().then(h => h?.run(root.dataset.mode === 'intro')); else hero?.run(false);
+  // The ground is behind every screen that has no 3D view (that one draws its own), with the whirlpool on it on the intro.
+  if (mode === 'world') hero?.run(false); else openHero().then(h => { const m = root.dataset.mode; h?.run(m !== 'world', m === 'intro'); });
   if (mode !== 'world') fluid.kick();
   $('hud').innerHTML = '';
   if (!step) return;
 
   const stage = $('s-stage'), payoff = $('s-payoff');
-  $('s-count').textContent = `Step ${i + 1} of ${STEPS.length}`;
+  $('s-count').innerHTML = `Step ${i + 1} of ${STEPS.length} · <b>${part[i]}</b>`;
   $('s-title').textContent = step.title; $('s-idea').textContent = step.idea;
-  $('s-do').textContent = step.act; $('s-do').hidden = !step.act;
+  $('s-do').textContent = step.act; $('s-try').hidden = !step.act;
   $('s-legend').innerHTML = step.legend || ''; $('s-more').innerHTML = step.more || '';
-  payoff.textContent = step.payoff; payoff.hidden = !step.payoff; payoff.classList.remove('on'); $('s-live').textContent = '';
   // Next and Back say where they lead, and the last step leads on to the companion site.
   $('s-back').href = '#' + (STEPS[i - 1]?.id || ''); $('s-back').textContent = `‹ ${STEPS[i - 1]?.tab || 'Start'}`;
   $('s-next').href = STEPS[i + 1] ? '#' + STEPS[i + 1].id : ZETA; $('s-next').textContent = STEPS[i + 1] ? `Next: ${STEPS[i + 1].tab} ›` : 'Zeta World ›';
 
-  // The payoff shows once the visitor has acted, or after a few seconds if they have not.
-  const ui = { done() { if (payoff.classList.contains('on')) return; payoff.classList.add('on'); $('s-live').textContent = payoff.textContent; } };
-  timer = setTimeout(ui.done, 6000);
-  stage.replaceChildren();
+  // The point of the step appears once the visitor has done the thing, or asks for it.
+  const ui = { big: $('s-big'), done() { if (payoff.classList.contains('on')) return; payoff.classList.add('on'); payoff.textContent = $('s-live').textContent = step.payoff; } };
+  payoff.hidden = !step.payoff; payoff.classList.remove('on'); $('s-live').textContent = '';
+  payoff.innerHTML = '<button type="button" class="link">Skip to the point</button>';
+  payoff.firstElementChild.onclick = ui.done;
+  stage.replaceChildren(); ui.big.replaceChildren();
   leave = step.mount?.(stage, ui) || null;
-  scrollTo(0, 0); $('s-title').focus({ preventScroll: true });
-  if (!still()) $('step').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });   // each step flows in
+  scrollTo(0, 0); $('panel').scrollTop = 0; $('s-title').focus({ preventScroll: true });
+  if (!still()) $('s-body').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });   // each step flows in
 }
 // The step bar: the way back to this guide's start, the ten steps by number and name, and the way to the companion site.
-$('tabs').innerHTML = '<a class="wordmark" href="#">Navier–Stokes</a>' + STEPS.map((s, k) => `<a href="#${s.id}" aria-label="Step ${k + 1}: ${s.tab}"><b>${k + 1}</b><span>${s.tab}</span></a>`).join('') + `<a class="out" href="${ZETA}"><span>Zeta World</span></a>`;
+$('tabs').innerHTML = '<a class="wordmark" href="#">Navier–Stokes</a>' + STEPS.map((s, k) => `<a href="#${s.id}" data-k="${k}"${part[k] !== part[k - 1] ? ' class="part"' : ''} title="${part[k]}: ${s.tab}" aria-label="Step ${k + 1}: ${s.tab}"><b>${k + 1}</b><span>${s.tab}</span></a>`).join('') + `<a class="out" href="${ZETA}"><span>Zeta World</span></a>`;
 addEventListener('hashchange', show);
 show();
+$('world').addEventListener('pointerdown', () => root.dataset.turned = '');   // the hint that the picture turns has done its job
 
 // Arrow keys and Space move between steps, and a digit jumps to that step (0 is the tenth), unless a slider, button, link
 // or summary has the focus: then the key is theirs.

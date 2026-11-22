@@ -348,12 +348,14 @@ function announced() {
 
 // ---- the view -----------------------------------------------------------------------------------------
 // Starts the 3D view on a canvas. quiet() is true while motion is paused; panel is the step card, which the scene is framed
-// clear of. Returns { run, show, tube, can, nested }. Throws where WebGL is unavailable.
-export function start(canvas, { quiet, panel }) {
+// clear of; backdrop() makes the ground behind the scene (astral.js). Returns { run, show, tube, can, nested }. Throws where
+// WebGL is unavailable.
+export function start(canvas, { quiet, panel, backdrop }) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setClearColor(0x0d1117);
-  const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(36, 1, 0.05, 400), controls = new OrbitControls(camera, canvas);
+  renderer.setClearColor(0x0b0d11);
+  const ground = backdrop();
+  const scene = new THREE.Scene().add(ground.mesh), camera = new THREE.PerspectiveCamera(36, 1, 0.05, 400), controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true; controls.enablePan = false;
   const free = { w: 1, h: 1 }, tan = () => Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   const ctx = {
@@ -372,13 +374,12 @@ export function start(canvas, { quiet, panel }) {
     if (jump || quiet() || !last) { camera.position.copy(pos); controls.target.copy(look); fly = null; }
     else fly = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos, t1: look, at: performance.now() };
   }
-  // The step bar runs along the top. The card docks at the bottom left, and on a wide screen the step's controls dock along
-  // the bottom beside it. The scene is centred in what is left: under the bar, above the dock, and to the right of the card.
+  // The step bar runs along the top, and the card is a column down the left, or on a narrow screen a sheet along the bottom.
+  // The scene is centred in what is left: under the bar, and to the right of the card or above it.
   const BAR = 46;
   function resize() {
-    const W = innerWidth, H = innerHeight, beside = panel.offsetWidth < W - 8;   // the card is beside the scene (wide screens, a phone on its side) or under it
-    const dock = !beside ? panel.offsetHeight : W >= 900 ? panel.querySelector('#s-fig').offsetHeight : 0;
-    const off = beside ? panel.offsetWidth * clamp(panel.offsetHeight / (H - BAR), 0.5, 1) : 0;   // a short card only nudges the scene; a full-height one takes its whole width
+    const W = innerWidth, H = innerHeight, beside = panel.offsetWidth < W - 8;
+    const dock = beside ? 0 : panel.offsetHeight, off = beside ? panel.offsetWidth : 0;
     free.w = W - off; free.h = Math.max(H - dock - BAR, H / 4);
     renderer.setSize(W, H, false);
     camera.fov = 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(18)) * Math.max(1, 1.25 * free.h / free.w)));   // narrow screens look wider
@@ -398,6 +399,7 @@ export function start(canvas, { quiet, panel }) {
       if (u === 1) fly = null;
     }
     current?.update(dt);
+    ground.tick(dt);
     controls.update();
     renderer.render(scene, camera);
   }
