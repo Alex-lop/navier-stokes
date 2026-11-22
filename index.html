@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en" data-mode="intro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0d1117">
+<title>Navier–Stokes: stretch a whirlpool, watch it blow up</title>
+<meta name="description" content="A ten-step climb from what a fluid is to the Navier–Stokes blow-up announced in November 2026, with whirlpools you can pull on and a computed singularity you can zoom into.">
+<meta property="og:title" content="Navier–Stokes: stretch a whirlpool, watch it blow up">
+<meta property="og:description" content="A ten-step climb from what a fluid is to the Navier–Stokes blow-up announced in November 2026, with whirlpools you can pull on and a computed singularity you can zoom into.">
+<meta property="og:type" content="website">
+<!-- Link previews need absolute URLs. Every local path stays relative: the site is served under /navier-stokes/. -->
+<meta property="og:url" content="https://alex-lop.github.io/navier-stokes/">
+<meta property="og:image" content="https://alex-lop.github.io/navier-stokes/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230d1117'/><path d='M16 2v28' stroke='%236ea8ff' stroke-width='4'/><path d='M5 9c7 0 7 5 11 7M27 9c-7 0-7 5-11 7M5 23c7 0 7-5 11-7M27 23c-7 0-7-5-11-7' fill='none' stroke='%23ecebe6' stroke-width='1.5'/><rect x='13.5' y='13.5' width='5' height='5' fill='%23e6392d'/></svg>">
+<!-- Before first paint: a reload on a step must not flash the intro. -->
+<script>document.documentElement.dataset.mode = location.hash.length > 1 ? 'paper' : 'intro';</script>
+<!-- No build step: three.js comes from a pinned CDN version, the one Zeta World uses, and is fetched only when a step first needs 3D. -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+} }
+</script>
+<style>
+  /* The theme and the step shell are the ones Zeta World uses (github.com/Alex-lop/zeta-world, index.html): a near-black ground, hairlines, mono labels,
+     a bar of numbered steps along the top. Colours have one meaning each, in every step: ink is the flow (the ticks), blue is
+     spin (vorticity), gold is viscosity, and red is the blow-up, the place and time where the equations would break.
+     Mint is for the visitor: every link, button and slider, and nothing else. */
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117; --bg-raised: #121722; --bg-plot: #0a0e14;
+    --ink: #ecebe6; --muted: #9aa0aa; --hair: #222937; --hair-strong: #364052;
+    --red: #e6392d; --gold: #f5c542; --blue: #6ea8ff; --act: #4fd6be;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    --pad: 24px;
+  }
+  @media (max-width: 720px) { :root { --pad: 18px; } }
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; background: var(--bg); }
+  body { margin: 0; color: var(--ink); font: 400 16px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  a { color: var(--act); text-decoration-color: color-mix(in srgb, var(--act) 45%, transparent); text-underline-offset: 3px; }
+  a:hover { color: var(--ink); text-decoration-color: var(--act); }
+  :focus-visible { outline: 2px solid var(--act); outline-offset: 3px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .wrap { width: min(100%, 1160px); margin-inline: auto; padding-inline: var(--pad); }
+  .eyebrow { margin: 0 0 14px; font: 650 .7rem/1.4 var(--mono); letter-spacing: .16em; text-transform: uppercase; }
+  h1 { margin: 0; text-wrap: balance; letter-spacing: -.035em; line-height: 1.04; font-weight: 620; }
+  .btn { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 18px; border: 1px solid var(--act); background: var(--bg-raised); color: var(--act); font: inherit; font-size: .9rem; text-decoration: none; cursor: pointer; }
+  .btn:hover { background: color-mix(in srgb, var(--act) 16%, var(--bg-raised)); color: var(--ink); }
+  .btn-go { background: var(--act); color: var(--bg); border-color: var(--act); }
+  .btn-go:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+
+  /* Two canvases behind everything: the page's own fluid of ticks, and over it the 3D view. */
+  #field, #world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #field { z-index: 0; transition: opacity .6s; }
+  #world { z-index: 1; opacity: 0; visibility: hidden; transition: opacity .9s, visibility 0s .9s; touch-action: none; }
+  html[data-mode=world] #world { opacity: 1; visibility: visible; transition: opacity .9s; }
+  html[data-mode=world] #field { opacity: 0; }
+  /* Words pinned to the 3D view, under the step bar: what is marked, and how big the picture is. */
+  .hud { position: fixed; z-index: 2; top: 46px; right: 0; margin: .8rem 1.2rem; padding: .25rem .5rem; background: rgb(13 17 23 / .72); display: none; text-align: right; font: 400 .78rem/1.6 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; pointer-events: none; }
+  html[data-mode=world] .hud:not(:empty) { display: block; }
+  .hud b { font-weight: 400; color: var(--ink); }
+  .hud .rule { display: block; height: 5px; margin: 0 0 5px auto; border: 1px solid var(--ink); border-top: 0; }
+
+  /* The step bar, on every screen but the intro: where you are in the climb, and a way to jump anywhere in it. */
+  #tabs { position: fixed; z-index: 3; top: 0; left: 0; right: 0; display: flex; align-items: stretch; height: 46px; padding: 0 var(--pad); background: rgb(13 17 23 / .92); border-bottom: 1px solid var(--hair); overflow-x: auto; scrollbar-width: none; white-space: nowrap; font: 400 .72rem/1 var(--mono); letter-spacing: .04em; }
+  #tabs::-webkit-scrollbar { display: none; }
+  html[data-mode=intro] #tabs { display: none; }
+  #tabs a { display: inline-flex; align-items: center; gap: .45rem; padding: 0 .65rem; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+  #tabs a:hover { color: var(--ink); }
+  #tabs a[aria-current] { color: var(--ink); border-bottom-color: var(--act); }
+  #tabs b { font-weight: 400; color: var(--act); }   /* the numbers are the handles */
+  #tabs .wordmark { margin-right: .8rem; padding-left: 0; font: 650 1rem/1 var(--sans); letter-spacing: -.02em; color: var(--ink); }
+  #tabs .out { margin-left: .8rem; padding-left: 1.2rem; border-left: 1px solid var(--hair); }
+  #tabs .out span { color: var(--act); }
+  @media (min-width: 900px) { #tabs { padding-right: 10rem; } }   /* room for Pause motion at its right end */
+  @media (max-width: 1400px) { #tabs a:not([aria-current], .wordmark, .out) span { display: none; } }   /* numbers only, and the name of the step you are on */
+  @media (max-width: 620px) { #tabs .wordmark { display: none; } #tabs a { padding: 0 .55rem; } }
+
+  html:not([data-mode=intro]) #intro, html[data-mode=intro] #panel { display: none; }
+
+  /* The intro: nav and hero, as on Zeta World. The ticks behind it are a fluid, and the right half is left open for stirring. */
+  #intro { position: relative; z-index: 2; min-height: 100dvh; display: flex; flex-direction: column; pointer-events: none; }
+  #intro :is(a, button) { pointer-events: auto; }
+  .nav { border-bottom: 1px solid var(--hair); }
+  .nav .wrap { display: flex; align-items: center; justify-content: space-between; min-height: 60px; gap: 24px; }
+  .wordmark { font-weight: 650; letter-spacing: -.02em; text-decoration: none; font-size: 1.05rem; color: var(--ink); }
+  .wordmark:hover { color: var(--act); }
+  .nav ul { display: flex; gap: 22px; margin: 0; padding: 0; list-style: none; font-size: .86rem; }
+  .nav a { display: inline-flex; align-items: center; min-height: 44px; }
+  .hero { position: relative; flex: 1; display: flex; align-items: center; }
+  .hero-copy { width: min(100%, 43rem); padding-block: clamp(40px, 8vh, 96px); }
+  .hero-copy > :not(h1) { max-width: 34rem; }
+  .hero h1 { margin: 0 0 22px; font-size: clamp(2.3rem, 4.4vw, 3.5rem); }
+  .lede { margin: 0; max-width: 46ch; font-size: 1.05rem; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 26px 0 0; }
+  .rows { margin: 30px 0 0; border-top: 1px solid var(--hair-strong); }
+  .rows > div { display: grid; grid-template-columns: 9.5rem 1fr; gap: 16px; align-items: center; min-height: 46px; border-bottom: 1px solid var(--hair); }
+  .rows dt { font: 650 .7rem/1.5 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  .rows dd { margin: 0; font-size: .92rem; }
+  .rows a { display: inline-flex; align-items: center; min-height: 44px; margin-right: 14px; }
+  .stir { position: absolute; right: max(var(--pad), calc(50% - 560px)); top: 46%; width: 15rem; margin: 0; font: 400 .72rem/1.6 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: right; }
+  .stir::before { content: "→ "; color: var(--act); }
+  @media (max-width: 900px) { .stir { display: none; } }
+
+  /* The step card, laid out as on Zeta World. On a 2D step it is two columns that hang from the top: the words, then the
+     figure. The words sit on a backing, because here the ticks behind them move. Over the 3D view the card docks at the
+     bottom left and lets drags through to the canvas, and the step's controls dock beside it along the bottom. */
+  #panel { position: relative; z-index: 2; min-height: 100dvh; display: flex; align-items: flex-start; justify-content: center; padding: calc(46px + clamp(1.5rem, 9vh, 6rem)) var(--pad) 72px; pointer-events: none; }
+  #step { width: min(100%, 36rem); }
+  #panel :is(a, button, input, summary, label, canvas) { pointer-events: auto; }
+  html[data-mode=paper] :is(#s-top, #s-bottom, .backed) { padding-inline: 1.4rem; background: rgb(13 17 23 / .9); pointer-events: auto; }
+  html[data-mode=paper] #s-top { padding-top: 1.2rem; } html[data-mode=paper] :is(#s-bottom, .backed) { padding-bottom: 1.2rem; }
+  html[data-mode=paper] .backed { padding-top: 1.2rem; }
+  @media (min-width: 900px) {
+    /* The words keep one height from step to step, with Next and Back at its foot: the pointer can stay on Next. */
+    html[data-mode=paper] #step { width: min(100%, 1112px); min-height: min(31rem, 100dvh - 46px - 9vh - 5rem); display: grid; grid-template-columns: minmax(0, 25rem) minmax(0, 1fr); grid-template-rows: auto 1fr; grid-template-areas: "top fig" "bottom fig"; column-gap: clamp(2rem, 5vw, 4.5rem); }
+    html[data-mode=paper] #s-top { grid-area: top; } html[data-mode=paper] #s-bottom { grid-area: bottom; display: flex; flex-direction: column; }
+    html[data-mode=paper] #s-bottom nav.go { margin-top: auto; padding-top: .9rem; }
+    html[data-mode=paper] #s-fig { grid-area: fig; align-self: start; }
+  }
+  html[data-mode=world] #panel {
+    position: fixed; left: 0; bottom: 0; display: block; min-height: 0; max-height: calc(100dvh - 46px); overflow-y: auto; width: min(30rem, 100%); padding: 1rem 1.4rem 1.1rem;
+    background: rgb(13 17 23 / .92); border-top: 1px solid var(--hair-strong); border-right: 1px solid var(--hair-strong);
+  }
+  html[data-mode=world] #step { width: auto; }
+  @media (min-width: 900px) {   /* beside the docked card, along the bottom of the 3D view */
+    html[data-mode=world] #s-fig { position: fixed; left: 30rem; right: 0; bottom: 0; padding: .8rem 1.2rem .9rem; background: rgb(13 17 23 / .92); border-top: 1px solid var(--hair-strong); }
+  }
+  .top { margin: 0 0 .7rem; color: var(--muted); font: 400 .72rem/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+  #step h1 { font-size: clamp(1.7rem, 3vw, 2.4rem); }
+  #step h1:focus { outline: none; }
+  #step p { margin: .7rem 0 0; }
+  #s-do { font: 400 .86rem/1.5 var(--mono); }
+  #s-do::before { content: "→ "; color: var(--act); }   /* the thing to do, in the colour of the things you do it with */
+  html[data-mode=paper] #s-stage:not(:empty) { margin-bottom: .2rem; }
+  #s-payoff { visibility: hidden; opacity: 0; transition: opacity .5s; }
+  #s-payoff.on { visibility: visible; opacity: 1; }
+  .small, #s-more, .legend, .status { font-size: .8rem; color: var(--muted); }
+  #s-more details { margin-top: .5rem; } summary { cursor: pointer; color: var(--act); } summary:hover { color: var(--ink); }
+  #s-more p { margin: .4rem 0 0; }
+  nav.go { display: flex; justify-content: space-between; align-items: center; margin-top: .9rem; }
+
+  /* Figures and controls: mono labels, hairlines. */
+  canvas.plot { display: block; width: 100%; border: 1px solid var(--hair-strong); background: var(--bg-plot); }
+  input[type=range] { width: 100%; margin: 0; accent-color: var(--act); cursor: pointer; }
+  .slide { display: grid; grid-template-columns: 6.5rem 1fr 6.5rem; gap: .7rem; align-items: center; min-height: 34px; font: 400 .72rem/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .slide output { text-align: right; color: var(--ink); text-transform: none; letter-spacing: 0; }
+  .slide.bare { grid-template-columns: auto 1fr; }
+  .legend { display: flex; flex-wrap: wrap; gap: .2rem 1.1rem; margin: .5rem 0 0; font-family: var(--mono); font-size: .72rem; }
+  .legend:empty { display: none; }
+  .sw { display: inline-block; width: 16px; height: 0; margin-right: 6px; vertical-align: middle; border-top: 2px solid currentColor; }
+  .sw.open { width: 10px; height: 10px; border: 1.5px solid currentColor; border-radius: 50%; }
+  .blue { color: var(--blue); } .gold { color: var(--gold); } .red { color: var(--red); } .inked { color: var(--ink); }
+  .readout { margin: .5rem 0 0; font: 400 .78rem/1.5 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .readout b { font-weight: 400; color: var(--ink); }
+  .row { display: flex; gap: 1rem; align-items: center; } .row .slide { flex: 1; }
+  .two { display: grid; gap: .1rem 1.4rem; }
+  @media (min-width: 900px) { html[data-mode=world] .two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; } }
+  .note { margin: .4rem 0 0; font: 400 .7rem/1.5 var(--mono); letter-spacing: .04em; color: var(--muted); }
+  .slide, .btn, .top, #tabs, .legend, .hud { user-select: none; -webkit-user-select: none; }
+
+  /* The equation of step 2: one line, three terms, each with its meaning under it. */
+  .law { margin: 0 0 1rem; padding: 1.3rem .6rem 1.1rem; border: 1px solid var(--hair-strong); background: var(--bg-plot); display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem .6rem; font: 400 clamp(1rem, 2.6vw, 1.35rem)/1.3 var(--mono); }
+  .law span { display: grid; justify-items: center; align-content: start; }
+  .law small { margin-top: .4rem; max-width: 8.5rem; text-align: center; font: 400 .66rem/1.35 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  .law .gold small { color: var(--gold); }
+
+  /* The last step: what is settled and what is not. */
+  .checks { border-top: 1px solid var(--hair-strong); }
+  .checks details { border-bottom: 1px solid var(--hair); padding: .55rem 0; }
+  .checks summary { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: baseline; list-style: none; color: var(--ink); }
+  .checks summary::-webkit-details-marker { display: none; }
+  .checks summary::before { content: "+"; grid-column: 1; grid-row: 1; width: 1.2rem; font: 620 1rem/1.3 var(--mono); color: var(--act); }
+  .checks details[open] summary::before { content: "−"; }
+  .checks summary b { grid-column: 1; grid-row: 1; padding-left: 1.6rem; font-weight: 400; }
+  .checks summary span { font: 400 .68rem/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .checks summary span.red { color: var(--red); } .checks summary span.blue { color: var(--blue); }
+  .checks details p { margin: .4rem 0 .1rem 1.6rem; color: var(--muted); font-size: .86rem; }
+  @media (max-width: 30rem) { .checks summary { grid-template-columns: 1fr; } .checks summary span { padding-left: 1.6rem; } }
+
+  .motion-dock { position: fixed; z-index: 4; right: var(--pad); bottom: 10px; min-height: 44px; padding: 0; border: 0; background: none; color: var(--act); font: 400 .7rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+  .motion-dock:hover { color: var(--ink); } .motion-dock[disabled] { cursor: default; color: var(--muted); }
+  /* Off the intro it sits at the right end of the step bar. Where the bar has no room, it goes under it over the 3D view. */
+  @media (min-width: 900px) { html:not([data-mode=intro]) .motion-dock { top: 1px; bottom: auto; } }
+  @media (max-width: 899px) { html[data-mode=world] .motion-dock { top: 48px; bottom: auto; left: var(--pad); right: auto; } }
+
+  @media (max-width: 899px) {   /* no room beside the card: it scrolls, and always leaves a band of the 3D view above it */
+    html[data-mode=world] #panel { pointer-events: auto; max-height: 68dvh; } html[data-mode=world] :is(#s-more, .note) { display: none; }
+    .hud { margin: .3rem .4rem 0; font-size: .68rem; }
+    html[data-mode=world] .motion-dock { min-height: 30px; }
+    /* Next and Back stay in sight at the foot of the card, however far its words scroll. */
+    html[data-mode=world] #s-bottom { display: contents; }
+    html[data-mode=world] nav.go { position: sticky; bottom: -1.1rem; margin: .6rem -1.4rem -1.1rem; padding: .6rem 1.4rem .8rem; background: var(--bg); border-top: 1px solid var(--hair); }
+    html[data-mode=paper] #s-fig { padding: .8rem 1.4rem; background: rgb(13 17 23 / .9); pointer-events: auto; }
+    html[data-mode=paper] .backed { padding: 0; background: none; }
+    .law { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem .4rem; }
+    html[data-step=flow] #s-fig { display: none; }
+  }
+  @media (max-width: 30rem) {
+    body { font-size: 15px; } html[data-mode=world] #panel { padding: .7rem 1rem .8rem; }
+    html[data-mode=world] nav.go { bottom: -.8rem; margin: .5rem -1rem -.8rem; padding: .5rem 1rem .7rem; }
+    .hero h1 { font-size: clamp(2.3rem, 11vw, 3rem); } .rows > div { grid-template-columns: 7rem 1fr; }
+    .slide { grid-template-columns: 5rem 1fr 6rem; gap: .5rem; }
+    html:is([data-mode=intro], [data-mode=paper]) .motion-dock { position: relative; display: block; margin: -56px 0 12px auto; }
+  }
+  @media (max-height: 30rem) and (orientation: landscape) {
+    body { font-size: 14px; } .legend, #s-more { display: none; }
+    html[data-mode=world] #panel { width: min(24rem, 60%); padding: .5rem .9rem .6rem; pointer-events: auto; }
+    #step h1 { font-size: 1.25rem; } .btn { min-height: 36px; padding: 6px 14px; } #step p { margin-top: .4rem; }
+    .hero-copy { padding-block: 16px; } .hero h1 { font-size: 2rem; margin-bottom: 10px; } .actions, .rows { margin-top: 12px; } .rows > div { min-height: 36px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #world, #field, #s-payoff { transition: none; } }
+</style>
+</head>
+<body>
+<canvas id="field" aria-hidden="true"></canvas>
+<canvas id="world" role="img" aria-label="3D view of a fluid. Depending on the step: a whirlpool whose spin is drawn in blue, a can of swirling fluid cut open to show where its spin is growing without limit, or a sketch of the blow-up announced in November 2026."></canvas>
+<p class="hud" id="hud"></p>
+
+<nav id="tabs" aria-label="Steps of the climb"></nav>
+
+<div id="intro">
+  <nav class="nav" aria-label="Primary">
+    <div class="wrap">
+      <a class="wordmark" href="#">Navier–Stokes</a>
+      <ul>
+        <li><a href="https://alex-lop.github.io/zeta-world/">Zeta World</a></li>
+        <li><a href="https://github.com/Alex-lop/navier-stokes">GitHub</a></li>
+      </ul>
+    </div>
+  </nav>
+  <header class="hero">
+    <p class="stir" aria-hidden="true">move out here: this page is a fluid</p>
+    <div class="wrap">
+      <div class="hero-copy">
+        <p class="eyebrow">Navier–Stokes · the singularity, as something you can watch</p>
+        <h1>Stretch a whirlpool.<br>Watch it blow up.</h1>
+        <p class="lede">Helloooo. This is a ten-step climb from what a fluid is to the blow-up announced in November 2026, with whirlpools you can pull on and a computed singularity you can zoom into.</p>
+        <p class="actions">
+          <a class="btn btn-go" href="#flow">Get started</a>
+          <a class="btn" href="#can">Watch one blow up</a>
+        </p>
+        <dl class="rows">
+          <div><dt>The news</dt><dd><a href="#announced">What was announced in 2026</a><a href="#status">What is settled</a></dd></div>
+          <div><dt>Elsewhere</dt><dd><a href="https://alex-lop.github.io/zeta-world/">Zeta World: the Riemann hypothesis</a><a href="https://github.com/Alex-lop/navier-stokes/blob/main/bake.py">The solver</a><a href="https://github.com/Alex-lop/navier-stokes">GitHub</a></dd></div>
+        </dl>
+        <noscript><p class="small">The guided climb needs JavaScript.</p></noscript>
+      </div>
+    </div>
+  </header>
+</div>
+
+<main id="panel">
+  <article id="step">
+    <div id="s-top">
+      <p class="top" id="s-count"></p>
+      <h1 id="s-title" tabindex="-1"></h1>
+      <p id="s-idea"></p>
+      <p id="s-do"></p>
+    </div>
+    <div id="s-fig"><div id="s-stage"></div><p class="legend" id="s-legend"></p></div>
+    <div id="s-bottom">
+      <p id="s-payoff"></p>
+      <div id="s-more"></div>
+      <nav class="go" aria-label="Steps"><a class="btn" id="s-back">‹ Back</a><a class="btn btn-go" id="s-next">Next ›</a></nav>
+      <p class="sr" id="s-live" aria-live="polite"></p>
+    </div>
+  </article>
+</main>
+
+<button type="button" class="motion-dock" id="motion">Pause motion</button>
+
+<script type="module" src="./guide.js?v=1"></script>
+</body>
+</html>
