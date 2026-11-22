@@ -163,6 +163,88 @@ function pen(canvas, h) {
 const css = name => getComputedStyle(root).getPropertyValue(name).trim();
 const short = () => innerWidth < 900 || innerHeight < 800;   // little room for a chart: beside the 3D view on a phone, or in a short window
 
+// ---- step 2's wave ------------------------------------------------------------------------------------------
+// The rule on one line with the pressure left out, u_t + u u_x = nu u_xx (Burgers' equation), started as one sine wave.
+// The fast fluid catches the slow, so the front in the middle steepens. With no viscosity the slope there is 1 / (1 - t)
+// (along a path that moves with the fluid, u_x = u0' / (1 + u0' t), and the wave starts with u0' = -1 at its middle):
+// infinite at t = 1. Any viscosity holds the front at a finite slope, about 1 / (2 nu) once it has formed.
+// The figure runs this over and over at whatever viscosity the slider says, and traces the front's slope against that
+// runaway. Returns { set(nu), stop() }. With motion paused it shows the wave part-way through one run instead.
+function wave(canvas, read) {
+  const N = innerWidth < 900 ? 512 : 1024, dx = 2 * Math.PI / N, T_END = 3, PACE = 1.5, TOP = 2.4;   // PACE: seconds on screen per unit of the wave's time. TOP: the chart's ceiling, as a power of ten
+  let u = new Float64Array(N), v = new Float64Array(N), nu = 0.02, t = 0, hist = [], raf = 0, last = 0, rest = 0, frozen = false, sized = '', c, W, H;
+  const begin = () => { for (let i = 0; i < N; i++) u[i] = Math.sin(i * dx); t = 0; hist = [[0, 1]]; };
+  const steepest = () => { let m = Math.abs(u[0] - u[N - 1]); for (let i = 1; i < N; i++) m = Math.max(m, Math.abs(u[i] - u[i - 1])); return m / dx; };
+  // Explicit steps: Godunov's flux for the carrying term, which stays stable through a front, and centred differences for viscosity.
+  function advance(until) {
+    while (t < until - 1e-12) {
+      const dt = Math.min(0.4 * dx, 0.2 * dx * dx / nu, until - t), k = dt / dx, d = dt * nu / (dx * dx);
+      for (let i = 0; i < N; i++) {
+        const a = u[i ? i - 1 : N - 1], b = u[i], e = u[i + 1 < N ? i + 1 : 0];
+        const ap = a > 0 ? a : 0, bm = b < 0 ? b : 0, bp = b > 0 ? b : 0, em = e < 0 ? e : 0;
+        v[i] = b - k * (Math.max(bp * bp, em * em) - Math.max(ap * ap, bm * bm)) / 2 + d * (a - 2 * b + e);
+      }
+      [u, v] = [v, u]; t += dt;
+    }
+    hist.push([t, steepest()]);
+  }
+  function draw() {
+    const roomy = innerWidth >= 900 && innerHeight >= 620, h1 = roomy ? 230 : 128, h2 = roomy ? 150 : 86, key = `${canvas.clientWidth} ${h1}`;   // beside the card there is room; inside it, on a phone, there is not
+    if (key !== sized) { [c, W, H] = pen(canvas, h1 + h2); sized = key; } else c.clearRect(0, 0, W, H);
+    const ink = css('--ink'), muted = css('--muted'), hair = css('--hair-strong'), gold = css('--gold'), red = css('--red');
+    // The wave, over the wave it started as.
+    const px = i => 12 + i / N * (W - 24), py = y => h1 / 2 + 4 - y * (h1 / 2 - 22);
+    c.lineWidth = 1; c.strokeStyle = hair; c.beginPath(); c.moveTo(12, py(0)); c.lineTo(W - 12, py(0)); c.moveTo(0, h1 + 0.5); c.lineTo(W, h1 + 0.5); c.stroke();
+    c.setLineDash([3, 4]); c.strokeStyle = muted; c.beginPath();
+    for (let i = 0; i <= N; i += 4) c[i ? 'lineTo' : 'moveTo'](px(i), py(Math.sin(i * dx)));
+    c.stroke(); c.setLineDash([]);
+    c.lineWidth = 2.2; c.strokeStyle = c.fillStyle = ink; c.beginPath();
+    for (let i = 0; i <= N; i++) c[i ? 'lineTo' : 'moveTo'](px(i), py(u[i % N]));
+    c.stroke();
+    c.lineTo(px(N), py(0)); c.lineTo(px(0), py(0)); c.globalAlpha = 0.07; c.fill(); c.globalAlpha = 1;   // a faint body under the line
+    // Gold over the line where viscosity is doing the work: where nu u_xx is large beside the carrying term u u_x.
+    c.strokeStyle = gold;
+    for (let band = 1; band <= 3; band++) {
+      c.globalAlpha = band / 3; c.beginPath();
+      for (let i = 1; i < N - 1; i++) {
+        const vis = nu * Math.abs(u[i + 1] - 2 * u[i] + u[i - 1]) / (dx * dx), adv = Math.abs(u[i] * (u[i + 1] - u[i - 1])) / (2 * dx);
+        if (Math.min(3, Math.ceil(3 * vis / (vis + adv + 0.03))) === band) { c.moveTo(px(i - 0.5), py((u[i - 1] + u[i]) / 2)); c.lineTo(px(i + 0.5), py((u[i] + u[i + 1]) / 2)); }
+      }
+      c.stroke();
+    }
+    c.globalAlpha = 1; c.fillStyle = muted;
+    c.fillText('the fluid’s speed, along a line', 14, 15); c.fillText('moving right →', px(N / 4) - 44, py(0) + 16); c.fillText('← moving left', px(3 * N / 4) - 44, py(0) - 8);
+    c.textAlign = 'right'; c.fillText('dashed: how it started', W - 14, 15); c.textAlign = 'left';
+    // How steep the front is, on a scale where each line is ten times the one below, against the runaway.
+    const tx = s => 58 + s / T_END * (W - 76), sy = m => H - 16 - Math.min(Math.log10(Math.max(m, 1)), TOP) / TOP * (h2 - 36);
+    c.lineWidth = 1; c.strokeStyle = css('--hair'); c.textAlign = 'right';
+    [['×1', 1], ['×10', 10], ['×100', 100]].forEach(([s, m]) => { c.beginPath(); c.moveTo(58, sy(m)); c.lineTo(W - 18, sy(m)); c.stroke(); c.fillText(s, 52, sy(m) + 4); });
+    c.textAlign = 'left'; c.fillText('how steep the front is', 64, h1 + 16);
+    c.strokeStyle = c.fillStyle = red; c.setLineDash([4, 4]); c.beginPath();
+    for (let s = 0; s < 0.9961; s += 0.004) c[s ? 'lineTo' : 'moveTo'](tx(s), sy(1 / (1 - s)));
+    c.lineTo(tx(1), sy(10 ** TOP)); c.stroke(); c.setLineDash([]);
+    c.fillText('with no viscosity: infinite here', tx(1) + 8, h1 + 16);
+    c.strokeStyle = ink; c.lineWidth = 2; c.beginPath();
+    hist.forEach(([s, m], k) => c[k ? 'lineTo' : 'moveTo'](tx(s), sy(m)));
+    c.stroke();
+    const [s, m] = hist.at(-1);
+    c.fillStyle = ink; c.beginPath(); c.arc(tx(s), sy(m), 3.5, 0, 2 * Math.PI); c.fill();
+    read.innerHTML = `the front is <b>×${num(m, m < 9.95 ? 1 : 0)}</b> as steep as the wave began`;
+  }
+  // With motion paused: one run to a little after the front has formed, drawn once.
+  function freeze() { begin(); for (let k = 1; k <= 80; k++) advance(1.6 * k / 80); draw(); frozen = true; }
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    const dt = Math.min((now - last) / 1000, 0.05); last = now;
+    if (still()) { if (!frozen) freeze(); return; }
+    frozen = false;
+    if (t < T_END) advance(Math.min(t + dt / PACE, T_END)); else if ((rest += dt) > 1) { begin(); rest = 0; }   // a breath at the end, then again
+    draw();
+  }
+  begin(); last = performance.now(); raf = requestAnimationFrame(frame);
+  return { set(value) { nu = value; if (still()) freeze(); }, stop() { cancelAnimationFrame(raf); } };
+}
+
 // ---- step 6's toy -------------------------------------------------------------------------------------------
 // A whirlpool with a Gaussian core in a pull of strength a has width^2 changing at the rate 4 nu - a width^2 (step 5 is
 // its steady state). Tie the pull to the spin by hand, a = c * (peak spin) = c Gamma / (pi width^2), and the rate becomes
@@ -310,19 +392,23 @@ const STEPS = [
     } },
   { id: 'law', tab: 'The rule', title: 'One rule, three pushes',
     idea: 'The equation, term by term. Viscosity is the fluid’s stickiness.',
-    act: 'Slide to honey, then stir again.',
-    payoff: 'In honey a swirl dies at once. Viscosity is the brake. The million-dollar question: does the brake always hold?',
+    act: 'Slide from water to honey and watch the wave.',
+    payoff: 'In water the wave rears up into a cliff. In honey it hardly tips. Viscosity is the brake. The million-dollar question: does the brake always hold?',
+    more: '<details><summary>What the wave is</summary><p>The rule on a single line, with the pressure term left out: <a href="https://en.wikipedia.org/wiki/Burgers%27_equation">Burgers’ equation</a>. Fast fluid catches slow fluid, so the front steepens, and only viscosity holds it. With no viscosity at all its slope becomes infinite at a finite time. With any viscosity it never does. Gold marks where viscosity is doing the work.</p></details>',
     mount(stage, ui) {
-      const [row, input, out] = slide('stickiness', 0, 1, 0.01, 0, 'gold');
+      const [row, input, out] = slide('stickiness', 0, 1, 0.01, 0, 'gold'), read = el('<p class="readout"></p>');
+      const plot = el('<canvas class="plot" role="img" aria-label="A wave of fluid speed along a line. Its front steepens until viscosity holds it: into a cliff in water, hardly at all in honey. Below it, how steep the front is over time, against the runaway it would follow with no viscosity."></canvas>');
       ui.big.append(el(`<p class="law" role="img" aria-label="The Navier–Stokes equation: the rate of change of the velocity u equals minus u dot grad u, minus the gradient of the pressure p, plus the viscosity nu times the Laplacian of u.">
         <span>∂u/∂t =<small>how the flow changes</small></span><span>− (u·∇)u<small>it carries itself along</small></span>
-        <span>− ∇p<small>pressure stops it piling up</small></span><span class="gold">+ ν ∆u<small>viscosity smooths it</small></span></p>`));
-      stage.append(row);
+        <span>− ∇p<small>pressure stops it piling up</small></span><span class="gold">+ ν ∆u<small>viscosity smooths it</small></span></p>`), plot);
+      stage.append(row, read);
+      const fig = wave(plot, read);
       if (still()) ui.done();
-      const set = () => { const x = +input.value; fluid.nu = 30 * (8000 / 30) ** x; out.textContent = x < 0.2 ? 'water' : x < 0.5 ? 'oil' : x < 0.8 ? 'syrup' : 'honey'; };
-      input.oninput = set; set();
-      fluid.onstir = () => { if (+input.value > 0.5) ui.done(); };
-      return () => { fluid.nu = 30; fluid.onstir = null; };
+      // One slider, two fluids: the wave's viscosity, and the page's own (stir it to see).
+      const set = () => { const x = +input.value; fluid.nu = 30 * (8000 / 30) ** x; fig.set(0.012 * (0.3 / 0.012) ** x); out.textContent = x < 0.2 ? 'water' : x < 0.5 ? 'oil' : x < 0.8 ? 'syrup' : 'honey'; };
+      input.oninput = () => { set(); if (+input.value > 0.5) ui.done(); };
+      set();
+      return () => { fig.stop(); fluid.nu = 30; };
     } },
   { id: 'spin', tab: 'Spin', world: true, title: 'What matters is spin',
     idea: 'Drop a paddle wheel into a whirlpool. How fast it turns on its own axle is the spin there.',
