@@ -156,6 +156,7 @@
   #s-more details { margin-top: .9rem; } summary { cursor: pointer; color: var(--act); } summary:hover { color: var(--ink); }
   #s-more p { margin: .4rem 0 0; }
   nav.go { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: .6rem; margin: 0 -1.3rem; padding: .8rem 1.3rem .9rem; background: var(--bg); border-top: 1px solid var(--hair); }
+  nav.go .on { display: flex; gap: .6rem; }   /* the last card has two ways on: this guide's first screen, and Zeta World */
   /* The big figure of a step that has one (the equation, the record): beside the card on a wide screen, inside it on a narrow one. */
   #s-big:not(:empty) { margin-top: 1rem; }
   .backed { padding: .4rem 1.3rem 1.1rem; background: var(--glass); border: 1px solid var(--hair); }
@@ -292,13 +293,13 @@
       <p id="s-payoff"></p>
       <div id="s-more"></div>
     </div>
-    <nav class="go" aria-label="Steps"><a class="btn" id="s-back">‹ Back</a><a class="btn btn-go" id="s-next">Next ›</a></nav>
+    <nav class="go" aria-label="Steps"><a class="btn" id="s-back">‹ Back</a><span class="on"><a class="btn" id="s-home" href="#" hidden>Home</a><a class="btn btn-go" id="s-next">Next ›</a></span></nav>
     <p class="sr" id="s-live" aria-live="polite"></p>
   </article>
 </main>
 
 <button type="button" class="motion-dock" id="motion">Pause motion</button>
 
-<script type="module" src="./guide.js?v=3"></script>
+<script type="module" src="./guide.js?v=4"></script>
 </body>
 </html>

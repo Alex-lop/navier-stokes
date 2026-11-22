@@ -458,6 +458,7 @@ function show() {
   // Next and Back say where they lead, and the last step leads on to the companion site.
   $('s-back').href = '#' + (STEPS[i - 1]?.id || ''); $('s-back').textContent = `‹ ${STEPS[i - 1]?.tab || 'Start'}`;
   $('s-next').href = STEPS[i + 1] ? '#' + STEPS[i + 1].id : ZETA; $('s-next').textContent = STEPS[i + 1] ? `Next: ${STEPS[i + 1].tab} ›` : 'Zeta World ›';
+  $('s-home').hidden = !!STEPS[i + 1];                        // the last card also offers the way home, to this guide's first screen
 
   // The point of the step appears once the visitor has done the thing, or asks for it.
   const ui = { big: $('s-big'), done() { if (payoff.classList.contains('on')) return; payoff.classList.add('on'); payoff.textContent = $('s-live').textContent = step.payoff; } };
